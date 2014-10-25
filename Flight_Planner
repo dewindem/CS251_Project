@@ -1,0 +1,118 @@
+/* 
+Available Flights 
+*/
+
+/* flight(Flight_num, Airline, Origin, Destination, Dep_time, Arr_time, Price)
+Dep_time/Arr_time: [Year, Month, Day, Hour, Minute]                       */
+
+flight('A197', 'American Airlines', 'Burlington', 'Boston', [2014, 12, 1, 18, 30], [2014, 12, 1, 19, 50], 250).
+flight('A580', 'American Airlines', 'Burlington', 'Atlanta', [2014, 12, 2, 12, 10], [2014, 12, 2, 16, 20], 300).
+flight('A230', 'American Airlines', 'Boston', 'London', [2014, 12, 1, 22, 30], [2014, 12, 2, 6, 20], 1500).
+flight('A120', 'American Airlines', 'Boston', 'London', [2014, 12, 2, 15, 15], [2014, 12, 2, 22, 20], 1450).  
+flight('A845', 'American Airlines', 'Atlanta', 'London', [2014, 12, 1, 19, 10], [2014, 12, 2, 6, 10], 1400).
+flight('A845', 'American Airlines', 'Atlanta', 'London', [2014, 12, 3, 5, 10], [2014, 12, 3, 11, 50], 1400).
+
+/* 
+Airports 
+*/
+
+/* airport(City, Latitude <degrees>, Longitude <degrees>, Layover_time <minutes>) 
+Latitude: '+' North,'-' South
+Latitude: '+' East, '-' West */
+airport('Burlington', 44.4719, -75.1533, 30).
+airport('Boston', 42.3631, -71.0064, 60).
+airport('Atlanta', 33.6367, -84.4281, 60).
+airport('London', 51.4712, -0.4544, 75).
+
+/* 
+Helper functions 
+*/
+convert_deg_rad(Deg, Rad):-
+	Rad is Deg * pi / 180.
+		
+distance(City_1, City_2, Distance):-
+	airport(City_1, Lat_1_deg, Long_1_deg, _),
+	airport(City_2, Lat_2_deg, Long_2_deg, _),
+
+	/* 
+	Spherical Law of Cosines 
+	*/
+	convert_deg_rad(Lat_1_deg, Lat_1_rad),
+	convert_deg_rad(Lat_2_deg, Lat_2_rad),
+	convert_deg_rad(Long_1_deg, Long_1_rad),
+	convert_deg_rad(Long_2_deg, Long_2_rad),
+	
+	Earth_radius_km is 6371,
+	Delta_long is Long_2_rad - Long_1_rad,
+	Cos_delta_long is cos(Delta_long),
+	Sin_lat_1 is sin(Lat_1_rad), Sin_lat_2 is sin(Lat_2_rad),
+	Cos_lat_1 is cos(Lat_1_rad), Cos_lat_2 is cos(Lat_2_rad),
+	
+	Distance is acos(Sin_lat_1 * Sin_lat_2 + Cos_lat_1 * Cos_lat_2 * Cos_delta_long)* Earth_radius_km.
+
+time_diff([Xyear, Xmonth, Xday, Xhour, Xmin], [Yyear, Ymonth, Yday, Yhour, Ymin], Total_min):-
+	Ayear is Yyear - Xyear,
+	Amonth is Ymonth - Xmonth,
+	Aday is Yday - Xday,
+	Ahour is Yhour - Xhour,
+	Amin is Ymin - Xmin,
+	/* Convert time difference to minutes.  Assume each month has 30 days */
+	Total_min is Ayear * 514800 + Amonth * 43200 + Aday * 1440 + Ahour * 60 + Amin.
+	
+	
+flight_time(Flight_num, Tmin):-
+	flight(Flight_num, _, _, _, Dep_time, Arr_time, _),
+	time_diff(Dep_time, Arr_time, Tmin). 
+	
+check_time([Arr_year, Arr_month, Arr_day, Arr_hour, Arr_min], Flight_num):-
+	flight(Flight_num, _, Airport, _, Next_dep_time, _, _),
+	airport(Airport, _, _, Buffer_time),
+	/* Add time required to get to the next gate.  Dependent on flight origin. */
+	Arr_min_min is Arr_min + Buffer_time mod 60,
+	Arr_hour_min is Arr_hour + (Arr_min + Buffer_time) // 60,
+	Arr_day_min is Arr_day + Arr_hour_min // 24,
+	/* Assume all months 30 days */
+	Arr_month_min is Arr_month + Arr_day_min // 31,
+	Arr_year_min is Arr_year + Arr_month_min // 13,
+	time_diff([Arr_year_min, Arr_month_min, Arr_day_min, Arr_hour_min, Arr_min_min], Next_dep_time, Difference),
+	Difference > 0.
+
+
+find_flight(Origin, Destination, [Dep_year, Dep_month, Dep_day, Dep_hour, Dep_min], Ret_date, Airline, Add_Destinations, Minimize, Idistance, Itime, Icost, Odistance, Otime, Ocost):-
+	/* No remaining additional destinations */
+	length(Add_Destinations, 0),
+	flight(Flight_num, Airline, Origin, Destination_1, Dep_time, Arr_time, Price),
+	check_time([Dep_year, Dep_month, Dep_day, Dep_hour, Dep_min], Flight_num),
+	distance(Destination, Destination_1, Distance),
+	Distance < 0.1,
+	/* Final destination */
+	distance(Origin, Destination, Leg_distance),
+	Odistance is Idistance + Leg_distance,
+	flight_time(Flight_num, Leg_time),
+	Otime is Itime + Leg_time,
+	Ocost is Icost + Price.
+
+find_flight(Origin, Destination, [Dep_year, Dep_month, Dep_day, Dep_hour, Dep_min], Ret_date, Airline, Add_Destinations, Minimize, Idistance, Itime, Icost, Odistance, Otime, Ocost):-
+	/* No remaining additional destinations */
+	length(Add_Destinations, 0),
+	flight(Flight_num, Airline, Origin, Destination_1, Dep_time, Arr_time, Price),
+	check_time([Dep_year, Dep_month, Dep_day, Dep_hour, Dep_min], Flight_num),
+	distance(Destination, Destination_1, Distance),
+	Distance > 0.1,
+
+	distance(Origin, Destination_1, Leg_distance),
+	Idistance_1 is Idistance + Leg_distance,
+	flight_time(Flight_num, Leg_time),
+	Itime_1 is Itime + Leg_time,
+	Icost_1 is Icost + Price,
+	find_flight(Destination_1, Destination, Arr_time, Ret_day, Airline, Add_Destinations, Minimize, Idistance_1, Itime_1, Icost_1, Odistance, Otime, Ocost).
+	
+/*
+Main Function
+*/	
+trip_plan(Origin, Destination, [Dep_year, Dep_month, Dep_day], [Ret_year, Ret_month, Ret_day], Airline, Add_Destinations, Minimize, Odistance, Otime, Ocost):-
+	find_flight(Origin, Destination, [Dep_year, Dep_month, Dep_day, 0 ,0], [Ret_year, Ret_month, Ret_day, 0 ,0], Airline, Add_Destinations, Minimize, 0, 0, 0, Odistance, Otime, Ocost).
+
+
+test(Destination, Odistance, Otime, Ocost):-
+	trip_plan('Burlington', Destination, [2014, 12, 2], [2014, 12, 12], 'American Airlines', [], 1, Odistance, Otime, Ocost).
